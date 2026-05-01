@@ -1,0 +1,112 @@
+@import url("https://cdn.jsdelivr.net/npm/@xz/fonts@1/serve/metropolis.min.css");
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --brand-color: #05214F;
+}
+
+.otp-card {
+  position: relative;
+  background: #fff;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 860px;
+  box-shadow: 0 32px 80px rgba(0,0,0,0.25);
+  overflow: hidden;
+  max-height: 95vh;
+  overflow-y: auto;
+}
+
+.otp-flex-container {
+  display: flex;
+  min-height: 500px;
+  position: relative;
+}
+
+.otp-sidebar {
+  width: 260px;
+  min-width: 260px;
+  background: var(--brand-color);
+  padding: 40px 32px;
+  display: flex;
+  flex-direction: column;
+}
+
+.otp-form-panel {
+  flex: 1;
+  padding: 40px 36px;
+  padding-bottom: 80px; /* Space for Powered By on mobile some cases */
+}
+
+.otp-input-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px 20px;
+}
+
+.otp-step-container {
+  padding: 60px 40px;
+}
+
+.otp-powered-by {
+  margin-top: auto;
+  padding-top: 32px;
+}
+
+.desktop-only { display: block; }
+.mobile-only { display: none; }
+
+@media (max-width: 768px) {
+  .otp-flex-container {
+    flex-direction: column;
+    min-height: auto;
+  }
+  .otp-sidebar {
+    width: 100%;
+    min-width: 100%;
+    padding: 32px 24px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  .otp-form-panel {
+    padding: 32px 24px;
+    padding-bottom: 100px;
+  }
+  .otp-input-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .otp-step-container {
+    padding: 40px 20px !important;
+  }
+  .otp-card {
+    max-height: 92vh;
+  }
+  .otp-powered-by {
+    position: relative;
+    padding: 24px;
+    background: #f9fafb;
+    border-top: 1px solid #eee;
+    margin-top: 0;
+  }
+  .desktop-only { display: none !important; }
+  .mobile-only { display: block !important; }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-6px); }
+  50% { transform: translateX(6px); }
+  75% { transform: translateX(-6px); }
+}
+
+.field-error {
+  animation: shake 0.4s ease-in-out;
+}

@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>External Website — OTP Popup Demo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #f9fafb;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 24px;
+      padding: 24px;
+    }
+    h1 { font-size: 28px; color: #111827; font-weight: 700; }
+    p { color: #6b7280; text-align: center; max-width: 400px; line-height: 1.6; }
+    button {
+      padding: 14px 32px;
+      background: linear-gradient(135deg, #2563eb, #7c3aed);
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      letter-spacing: -0.01em;
+    }
+    #result {
+      display: none;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 12px;
+      padding: 16px 24px;
+      color: #166534;
+      font-size: 14px;
+      max-width: 400px;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <h1>🌐 External Website</h1>
+  <p>
+    This is a completely separate website. It uses the OTP popup from your
+    Next.js app via a single script tag — no React, no npm required.
+  </p>
+
+  <!-- The trigger button -->
+  <button id="verify-btn">Verify My Phone Number</button>
+
+  <!-- Result display -->
+  <div id="result"></div>
+
+  <!--
+    ─── Embed the popup ───────────────────────────────────────────────────────
+    Replace YOUR-DOMAIN with your actual deployed URL (e.g. https://otp-app.vercel.app)
+    For local testing: http://localhost:3000
+  -->
+  <script
+    src="http://localhost:3000/embed.js"
+    data-trigger="#verify-btn"
+    data-on-success="handleVerified"
+  ></script>
+
+  <script>
+    // This function is called automatically after successful OTP verification
+    function handleVerified(user) {
+      const el = document.getElementById('result');
+      el.style.display = 'block';
+      el.innerHTML = `
+        ✅ <strong>Verified!</strong><br/>
+        Name: ${user.name}<br/>
+        Email: ${user.email}<br/>
+        Phone: ${user.phone}
+      `;
+    }
+
+    // You can also use the DOM event approach:
+    document.addEventListener('otp:success', function(e) {
+      console.log('OTP verified via event:', e.detail);
+    });
+
+    // Or control it programmatically:
+    // window.OTPPopup.open();
+    // window.OTPPopup.close();
+  </script>
+</body>
+</html>
