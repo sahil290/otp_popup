@@ -197,3 +197,133 @@
 .field-error {
   animation: shake 0.4s ease-in-out;
 }
+
+/* —— Admin leads: glassmorphism + animated aurora —— */
+.admin-leads-root {
+  position: relative;
+  isolation: isolate;
+}
+
+.admin-leads-aurora {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  background: linear-gradient(165deg, #0a0f1c 0%, #12182a 35%, #0d1525 70%, #0a1628 100%);
+}
+
+.admin-leads-aurora::before,
+.admin-leads-aurora::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(72px);
+  opacity: 0.55;
+  animation: admin-leads-blob 22s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.admin-leads-aurora::before {
+  width: min(58vw, 520px);
+  height: min(58vw, 520px);
+  background: linear-gradient(135deg, #05214f 0%, #1e3a8a 50%, #6366f1 100%);
+  top: -12%;
+  left: -8%;
+  animation-delay: 0s;
+}
+
+.admin-leads-aurora::after {
+  width: min(50vw, 440px);
+  height: min(50vw, 440px);
+  background: linear-gradient(315deg, #0ea5e9 0%, #05214f 45%, #312e81 100%);
+  bottom: -15%;
+  right: -10%;
+  animation-delay: -11s;
+  animation-duration: 26s;
+}
+
+@keyframes admin-leads-blob {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  25% {
+    transform: translate(8%, 12%) scale(1.06);
+  }
+  50% {
+    transform: translate(-6%, 6%) scale(0.94);
+  }
+  75% {
+    transform: translate(5%, -8%) scale(1.03);
+  }
+}
+
+.admin-leads-header-glass {
+  background: rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+}
+
+.admin-leads-panel-glass {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow:
+    0 4px 24px rgba(15, 23, 42, 0.1),
+    0 0 0 1px rgba(255, 255, 255, 0.4) inset;
+}
+
+.admin-leads-login-card {
+  background: rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  box-shadow:
+    0 25px 50px -12px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.12) inset;
+}
+
+.admin-leads-input-glass {
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.admin-leads-row-glass {
+  transition:
+    background 0.28s ease,
+    box-shadow 0.28s ease,
+    transform 0.22s ease;
+}
+
+.admin-leads-row-glass:hover {
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+
+.admin-leads-detail-shell {
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  box-shadow:
+    0 8px 32px rgba(15, 23, 42, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.admin-leads-thead-glass {
+  background: rgba(248, 250, 252, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-leads-aurora::before,
+  .admin-leads-aurora::after {
+    animation: none;
+  }
+}

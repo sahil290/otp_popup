@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import nodemailer from "nodemailer";
+import {
+  type CarData,
+  mergeCarPayload,
+  pickSnap,
+  safeJsonForEmail,
+  vehicleStatusFromType,
+} from "@/lib/leadVehicle";
 import { verifyOTP } from "@/lib/otpStore";
 import { normalizePhone } from "@/lib/phone";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
@@ -15,14 +22,17 @@ interface UserData {
   name?: string;
 }
 
-interface CarData {
-  title: string;
-  price: string;
-  vin: string;
-  stock: string;
-  source?: string;
-  pageUrl?: string;
-  vehicleSnapshot?: Record<string, unknown> | null;
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/** Allow arbitrary text inside XML CDATA (e.g. JSON containing ]]>). */
+function cdataSafe(s: string): string {
+  return s.replace(/\]\]>/g, "]]]]><![CDATA[>");
 }
 
 async function saveLeadToSupabase(userData: UserData, carData?: CarData) {
@@ -39,6 +49,7 @@ async function saveLeadToSupabase(userData: UserData, carData?: CarData) {
   if (!supabase) return;
 
   const table = process.env.SUPABASE_LEADS_TABLE || "otp_leads";
+  const snap = carData?.vehicleSnapshot ?? null;
   const row = {
     first_name: userData.firstName ?? "",
     last_name: userData.lastName ?? "",
@@ -48,12 +59,13 @@ async function saveLeadToSupabase(userData: UserData, carData?: CarData) {
     comments: userData.comments || null,
     verified_at: userData.verifiedAt || null,
     vehicle_title: carData?.title || null,
-    price: carData?.price || null,
+    price: carData?.price != null ? String(carData.price) : null,
     vin: carData?.vin || null,
     stock: carData?.stock || null,
     page_url: carData?.pageUrl || null,
     embed_source: carData?.source || null,
-    vehicle_snapshot: carData?.vehicleSnapshot ?? null,
+    /** Full merged vehicle object (Dealer Inspire / Cars Commerce fields, images, MSRP, colors, etc.) */
+    vehicle_snapshot: snap,
   };
 
   const { error, data } = await supabase.from(table).insert(row).select("id");
@@ -89,41 +101,114 @@ async function sendAdminEmail(userData: UserData, carData?: CarData) {
   const adfDate = new Date().toISOString();
   const formTitle = "OTP Verification Popup";
   const dealerName = "Am Ford";
+  const snap = carData?.vehicleSnapshot ?? undefined;
 
-  // Attempt to parse vehicle title (e.g. "2024 Ford Mustang")
-  let year = "";
-  let make = "";
-  let model = "";
-  if (carData?.title) {
+  let year = pickSnap(snap, ["year"]);
+  let make = pickSnap(snap, ["make"]);
+  let model = pickSnap(snap, ["model"]);
+  const trim = pickSnap(snap, ["trim"]);
+  const vehType = pickSnap(snap, ["type"]);
+  const adfVehicleStatus = vehicleStatusFromType(vehType || "new");
+  const extColor = pickSnap(snap, ["ext_color", "exteriorColor", "exterior_color", "color"]);
+  const bodystyle = pickSnap(snap, ["bodystyle", "body_style"]);
+  const fueltype = pickSnap(snap, ["fueltype", "fuel_type", "fuelType"]);
+  const msrp = pickSnap(snap, ["msrp"]);
+  const listPrice = pickSnap(snap, ["price"]) || (carData?.price ?? "");
+  const heroImage = pickSnap(snap, [
+    "heroImage",
+    "photoUrl",
+    "imageUrl",
+    "primaryPhoto",
+    "thumbnail",
+  ]);
+  const dateInStock = pickSnap(snap, ["date_in_stock", "dateInStock"]);
+  const vin = carData?.vin || pickSnap(snap, ["vin"]);
+  const stock = carData?.stock || pickSnap(snap, ["stock"]);
+
+  if (!year && carData?.title) {
     const parts = carData.title.split(" ");
     if (parts.length >= 1 && /^\d{4}$/.test(parts[0])) year = parts[0];
-    if (parts.length >= 2) make = parts[1];
-    model = parts.slice(2).join(" ") || carData.title;
+    if (!make && parts.length >= 2) make = parts[1];
+    if (!model) model = parts.slice(2).join(" ") || carData.title;
   }
+  if (!model && carData?.title) model = carData.title;
+
+  const detailLines = [
+    `Preferred contact: ${userData.preferredContact || ""}`,
+    `Customer comments: ${userData.comments || "(none)"}`,
+    `Page URL: ${carData?.pageUrl || pickSnap(snap, ["embed_page_url"]) || ""}`,
+    `Embed source param: ${carData?.source || ""}`,
+    "",
+    "--- Vehicle (from snapshot) ---",
+    `Year: ${year} | Make: ${make} | Model: ${model} | Trim: ${trim}`,
+    `Type: ${vehType || ""} | Bodystyle: ${bodystyle} | Fuel: ${fueltype}`,
+    `Exterior: ${extColor}`,
+    `VIN: ${vin} | Stock: ${stock}`,
+    `Internet / listing price: ${listPrice} | MSRP: ${msrp}`,
+    `Date in stock: ${dateInStock}`,
+    `Photo: ${heroImage}`,
+    "",
+    "Full vehicle_snapshot JSON:",
+    safeJsonForEmail(snap ?? {}),
+  ].join("\n");
+
+  const subjectVehicle = stock || vin || carData?.title || "OTP lead";
+  const subject = `ADF Lead: ${userData.firstName} ${userData.lastName} — ${subjectVehicle}`;
+
+  const htmlRows = [
+    ["Name", `${escapeHtml(userData.firstName)} ${escapeHtml(userData.lastName)}`.trim()],
+    ["Phone", escapeHtml(userData.phone)],
+    ["Email", escapeHtml(userData.email || "")],
+    ["Preferred contact", escapeHtml(userData.preferredContact || "")],
+    ["Comments", escapeHtml(userData.comments || "")],
+    ["Page URL", escapeHtml(carData?.pageUrl || pickSnap(snap, ["embed_page_url"]) || "")],
+    ["Year", escapeHtml(year)],
+    ["Make", escapeHtml(make)],
+    ["Model", escapeHtml(model)],
+    ["Trim", escapeHtml(trim)],
+    ["Type", escapeHtml(vehType)],
+    ["VIN", escapeHtml(vin)],
+    ["Stock", escapeHtml(stock)],
+    ["Exterior color", escapeHtml(extColor)],
+    ["Bodystyle", escapeHtml(bodystyle)],
+    ["Fuel", escapeHtml(fueltype)],
+    ["Price", escapeHtml(String(listPrice))],
+    ["MSRP", escapeHtml(msrp)],
+    ["Date in stock", escapeHtml(dateInStock)],
+    ["Hero image", heroImage ? `<a href="${escapeHtml(heroImage)}">link</a>` : ""],
+  ]
+    .map(
+      ([k, v]) =>
+        `<tr><td style="padding:6px 10px;border:1px solid #e5e7eb;background:#f9fafb;font-weight:600">${k}</td><td style="padding:6px 10px;border:1px solid #e5e7eb">${v}</td></tr>`,
+    )
+    .join("");
+
+  const htmlBody = `<!DOCTYPE html><html><body style="font-family:system-ui,sans-serif;font-size:14px;color:#111">
+<h2 style="margin:0 0 12px">OTP verified lead</h2>
+<table style="border-collapse:collapse;width:100%;max-width:720px">${htmlRows}</table>
+<h3 style="margin:24px 0 8px">Full <code>vehicle_snapshot</code> JSON</h3>
+<pre style="background:#f4f4f5;padding:12px;overflow:auto;font-size:12px;border-radius:8px">${escapeHtml(safeJsonForEmail(snap ?? {}))}</pre>
+</body></html>`;
 
   const mailOptions = {
     from: `"Lead Generator" <${process.env.EMAIL_USER}>`,
     to: process.env.EMAIL_TO,
-    subject: `ADF Lead: ${userData.firstName} ${userData.lastName}`,
+    subject,
     text: `<?xml version="1.0"?>
 <?adf version="1.0"?>
 <adf>
     <prospect>
         <requestdate><![CDATA[${adfDate}]]></requestdate>
-        <vehicle status="Used" interest="buy">
+        <vehicle status="${adfVehicleStatus}" interest="buy">
             <year><![CDATA[${year}]]></year>
             <make><![CDATA[${make}]]></make>
             <model><![CDATA[${model}]]></model>
-            <stock><![CDATA[${carData?.stock || ""}]]></stock>
-            <trim><![CDATA[]]></trim>
-            <vin><![CDATA[${carData?.vin || ""}]]></vin>
+            <stock><![CDATA[${stock}]]></stock>
+            <trim><![CDATA[${trim}]]></trim>
+            <vin><![CDATA[${vin}]]></vin>
             <comments><![CDATA[New Submission from ${formTitle}.
 
-Message:  ${userData.comments || "No comments"}
-
-Page URL: ${carData?.pageUrl || ""}
-
-Embed source param: ${carData?.source || ""}
+${cdataSafe(detailLines)}
 ]]></comments>
         </vehicle>
         <customer>
@@ -168,6 +253,7 @@ Embed source param: ${carData?.source || ""}
         </provider>
     </prospect>
 </adf>`,
+    html: htmlBody,
   };
 
   await transporter.sendMail(mailOptions);
@@ -192,7 +278,7 @@ export async function POST(req: NextRequest) {
 
     // Fallback for old structure if needed, but primarily use new one
     const userData = user || body;
-    const carData = car;
+    const carData = mergeCarPayload(car, body as Record<string, unknown>);
     const { phone, firstName, lastName, email, preferredContact, comments } =
       userData;
     const { otp: oldOtp } = body;
