@@ -18,7 +18,7 @@
   background: #fff;
   border-radius: 12px;
   width: 100%;
-  max-width: 860px;
+  max-width: 960px;
   box-shadow: 0 32px 80px rgba(0,0,0,0.25);
   overflow: hidden;
   max-height: 95vh;
@@ -27,23 +27,108 @@
 
 .otp-flex-container {
   display: flex;
-  min-height: 500px;
+  min-height: 520px;
   position: relative;
+  align-items: stretch;
 }
 
 .otp-sidebar {
-  width: 260px;
-  min-width: 260px;
+  width: 340px;
+  min-width: 280px;
+  max-width: 40%;
   background: var(--brand-color);
-  padding: 40px 32px;
+  padding: 36px 28px 32px;
   display: flex;
   flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.otp-sidebar-inner {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-height: 0;
+}
+
+.otp-sidebar-intro {
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 13px;
+  line-height: 1.65;
+  margin-bottom: 20px;
+}
+
+.otp-vehicle-card {
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.22);
+}
+
+.otp-vehicle-card-media {
+  aspect-ratio: 16 / 10;
+  background: linear-gradient(145deg, #e8edf5 0%, #d4dce8 100%);
+  position: relative;
+}
+
+.otp-vehicle-card-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.otp-vehicle-card-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(5, 33, 79, 0.35);
+}
+
+.otp-vehicle-card-body {
+  padding: 14px 16px 18px;
+}
+
+.otp-vehicle-card-year-make {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #6b7280;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.otp-vehicle-card-model {
+  font-size: 17px;
+  font-weight: 800;
+  color: #111827;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  margin-bottom: 8px;
+}
+
+.otp-vehicle-card-meta {
+  font-size: 13px;
+  color: #6b7280;
+  line-height: 1.45;
 }
 
 .otp-form-panel {
   flex: 1;
   padding: 40px 36px;
   padding-bottom: 80px; /* Space for Powered By on mobile some cases */
+  min-width: 0;
+  position: relative;
+}
+
+.otp-form-panel--narrow-flow {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .otp-input-grid {
@@ -72,8 +157,10 @@
   .otp-sidebar {
     width: 100%;
     min-width: 100%;
-    padding: 32px 24px;
+    max-width: none;
+    padding: 28px 24px 24px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    max-height: none;
   }
   .otp-form-panel {
     padding: 32px 24px;

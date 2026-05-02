@@ -4,37 +4,203 @@ WordPress + Google Tag Manager — OTP iframe + hidden dealer price until verifi
 Behavior
 --------
 - Masks "AM Ford Price" / `.price-block.our-price.real-price` on each inventory card with a
-  navy teaser ("Want a Lower Price?", "START HERE!", arrow, "Unlock Instant Price").
+  teaser image + navy "Unlock Instant Price" button (image URL is configurable below).
 - "Unlock Instant Price" and "Get Today's Price" open the OTP iframe (same flow).
-- After OTP_SUCCESS, sets localStorage and reveals ALL masked prices on the page (no blur).
-- On later visits or other cards: if localStorage is set, prices stay visible and "Get Today's Price"
-  does NOT open the popup (instant reveal — nothing left to mask).
+- While locked, Dealer Inspire green `.lightning-custom-cta.stat-button-link` ("Get Today's Price") buttons stay hidden — only the navy Unlock UI shows.
+- After **one successful OTP**, the shopper is treated as verified for this browser: other vehicles still show the Unlock UI until tapped, but tapping **Unlock Instant Price** only **reveals that card’s price** (no second OTP). The first OTP still unlocks the vehicle you verified on; each other vehicle unlocks on first click after that.
+- Legacy green buttons are **never** shown again (no restore after verify).
+- While locked, **dealer discount**, **doc/fee**, and similar adjustment rows in the price stack are hidden (along with the blurred dealer price); **the moment that vehicle’s discounted price is revealed**, those rows come back **except** the legacy green “Get Today’s Price” link, which stays removed for good.
+- When a card’s price is revealed (OTP success or one-tap unlock after verification), a short **confetti** burst plays on that card (skipped when the visitor prefers reduced motion).
 
-Paste into GTM → Custom HTML. Set POPUP_ORIGIN (no trailing slash).
+Paste into GTM → Custom HTML. Set POPUP_ORIGIN (no trailing slash). Optional: change PRICE_TEASER_IMAGE_URL for the green banner graphic.
 
 <script>
 (function () {
   var POPUP_ORIGIN = 'https://otp-popup.vercel.app';
-  var STORAGE_KEY = 'otp_popup_price_unlocked_v1';
-  var NAVY = '#05214F';
+  /** JSON array of keys: "V:VIN" or "S:STOCK" — which cards show revealed price */
+  var VINS_STORAGE_KEY = 'otp_popup_unlocked_vins_v1';
+  /** Set after first successful OTP; then Unlock on other cards reveals price without iframe */
+  var GLOBAL_VERIFY_KEY = 'otp_popup_user_verified_v1';
+  var PRICE_TEASER_IMAGE_URL = 'https://www.irwinzone.com/static/dealer-5520/start_lower_price_here_green.png';
+
+  /** Avoid /regex/ literals with apostrophes — broken quotes in CMS/GTM cause parse errors */
+  function matchesGetTodaysPriceLabel(text) {
+    var t = (text || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    var n = t.replace(/\u2019/g, "'");
+    return n.indexOf("get today's price") !== -1 || n.indexOf('get todays price') !== -1;
+  }
 
   function removePopupOverlay() {
     var overlay = document.getElementById('custom-price-popup');
     if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
   }
 
-  function isPriceUnlocked() {
+  function unlockKeyFromContext(ctx) {
+    if (!ctx) return '';
+    var v = (ctx.vin || '').trim().toUpperCase();
+    if (v) return 'V:' + v;
+    var s = (ctx.stock || '').trim().toUpperCase();
+    if (s) return 'S:' + s;
+    return '';
+  }
+
+  function unlockKeyFromPayload(payload) {
+    if (!payload || typeof payload !== 'object') return '';
+    if (payload.car) {
+      var c = payload.car;
+      var v1 = (c.vin || '').trim().toUpperCase();
+      if (v1) return 'V:' + v1;
+      var s1 = (c.stock || '').trim().toUpperCase();
+      if (s1) return 'S:' + s1;
+    }
+    var v2 = (payload.vin || '').trim().toUpperCase();
+    if (v2) return 'V:' + v2;
+    var s2 = (payload.stock || '').trim().toUpperCase();
+    if (s2) return 'S:' + s2;
+    return '';
+  }
+
+  function getUnlockedKeys() {
     try {
-      return !!localStorage.getItem(STORAGE_KEY);
+      var raw = localStorage.getItem(VINS_STORAGE_KEY);
+      if (!raw) return [];
+      var arr = JSON.parse(raw);
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function isKeyUnlocked(key) {
+    if (!key) return false;
+    return getUnlockedKeys().indexOf(key) >= 0;
+  }
+
+  function addUnlockedKey(key) {
+    if (!key) return;
+    try {
+      var arr = getUnlockedKeys();
+      if (arr.indexOf(key) >= 0) return;
+      arr.push(key);
+      localStorage.setItem(VINS_STORAGE_KEY, JSON.stringify(arr));
+    } catch (e) {}
+  }
+
+  function isGloballyVerified() {
+    try {
+      return localStorage.getItem(GLOBAL_VERIFY_KEY) === '1';
     } catch (e) {
       return false;
     }
   }
 
-  function setPriceUnlocked() {
+  function setGloballyVerified() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ unlockedAt: Date.now() }));
+      localStorage.setItem(GLOBAL_VERIFY_KEY, '1');
     } catch (e) {}
+  }
+
+  function revealCardPriceWithoutPopup(wrap) {
+    var ctx = parseVehicleFromClick(wrap);
+    var k = unlockKeyFromContext(ctx);
+    if (!k) return false;
+    addUnlockedKey(k);
+    injectPriceTeasersOnPage();
+    requestAnimationFrame(function () {
+      injectPriceTeasersOnPage();
+      playPriceRevealCelebration(wrap);
+    });
+    return true;
+  }
+
+  var __otpCelebrationGuard = { key: '', t: 0 };
+
+  function findCardWrapByVehicle(vin, stock) {
+    vin = (vin || '').trim().toUpperCase();
+    stock = (stock || '').trim().toUpperCase();
+    if (!vin && !stock) return null;
+    var wraps = document.querySelectorAll('.result-wrap');
+    var i;
+    for (i = 0; i < wraps.length; i++) {
+      var ctx = parseVehicleFromClick(wraps[i]);
+      var cv = (ctx.vin || '').trim().toUpperCase();
+      var cs = (ctx.stock || '').trim().toUpperCase();
+      if (vin && cv === vin) return wraps[i];
+      if (!vin && stock && cs === stock) return wraps[i];
+    }
+    return null;
+  }
+
+  function schedulePriceRevealCelebrationForVehicle(vin, stock) {
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        var w = findCardWrapByVehicle(vin, stock);
+        if (w) playPriceRevealCelebration(w);
+      });
+    });
+  }
+
+  function guardedCelebrateVehicle(vin, stock) {
+    var k =
+      unlockKeyFromContext({ vin: vin, stock: stock }) ||
+      String(vin || '') + '|' + String(stock || '');
+    var now = Date.now();
+    if (k && k === __otpCelebrationGuard.key && now - __otpCelebrationGuard.t < 1200) return;
+    __otpCelebrationGuard.key = k;
+    __otpCelebrationGuard.t = now;
+    schedulePriceRevealCelebrationForVehicle(vin, stock);
+  }
+
+  function otpPrefersReducedMotion() {
+    try {
+      return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /** Confetti burst — scoped to the unlocked inventory card */
+  function playPriceRevealCelebration(wrap) {
+    if (!wrap || !wrap.appendChild || otpPrefersReducedMotion()) return;
+
+    var computed = window.getComputedStyle(wrap);
+    var prevPos = wrap.style.position;
+    if (computed.position === 'static') wrap.style.position = 'relative';
+
+    var layer = document.createElement('div');
+    layer.className = 'otp-celebration-layer';
+    layer.setAttribute('aria-hidden', 'true');
+
+    var colors = ['#05214F', '#22c55e', '#fbbf24', '#ec4899', '#3b82f6', '#f97316', '#a855f7'];
+    var ci;
+    for (ci = 0; ci < 26; ci++) {
+      var piece = document.createElement('div');
+      piece.className = 'otp-celeb-confetti';
+      piece.style.backgroundColor = colors[ci % colors.length];
+      piece.style.left = 38 + Math.random() * 24 + '%';
+      piece.style.top = 32 + Math.random() * 18 + '%';
+      piece.style.animationDelay = Math.random() * 0.12 + 's';
+      var dx = (Math.random() - 0.5) * 220;
+      var dy = 70 + Math.random() * 110;
+      var rot = Math.random() * 720;
+      if (piece.animate) {
+        piece.animate(
+          [
+            { transform: 'translate(0,0) rotate(0deg)', opacity: 1 },
+            { transform: 'translate(' + dx + 'px,' + dy + 'px) rotate(' + rot + 'deg)', opacity: 0 }
+          ],
+          { duration: 1500 + Math.random() * 450, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'forwards' }
+        );
+      }
+      layer.appendChild(piece);
+    }
+
+    wrap.appendChild(layer);
+
+    window.setTimeout(function () {
+      if (layer.parentNode) layer.parentNode.removeChild(layer);
+      if (computed.position === 'static') wrap.style.position = prevPos || '';
+    }, 2600);
   }
 
   function injectStylesOnce() {
@@ -43,24 +209,69 @@ Paste into GTM → Custom HTML. Set POPUP_ORIGIN (no trailing slash).
     st.id = 'otp-price-lock-styles';
     st.textContent =
       '.otp-dealer-price-shell{position:relative;margin:0;padding:0;}' +
+      '.otp-price-lock-overlay{' +
+      'position:absolute;' +
+      'inset:0;' +
+      'display:flex;' +
+      'flex-direction:column;' +
+      'align-items:center;' +
+      'justify-content:center;' +
+      'z-index:4;' +
+      'box-sizing:border-box;' +
+      '}' +
+      '.otp-price-teaser-img-wrap{width:100%;max-width:340px;margin-top:20px;}' +
+      '.otp-price-teaser-img{display:block;width:75%;height:auto;margin:0 auto;}' +
+      '.otp-unlock-instant-btn{' +
+      'margin-bottom:14px;' +
+      'background:#05214F;' +
+      'color:#fff;' +
+      'border:none;' +
+      'padding:8px 16px;' +
+      'border-radius:999px;' +
+      'font-weight:600;' +
+      'font-size:15px;' +
+      'cursor:pointer;' +
+      'display:inline-flex;' +
+      'align-items:center;' +
+      'gap:10px;' +
+      'font-family:system-ui,-apple-system,sans-serif;' +
+      'box-shadow:0 4px 14px rgba(5,33,79,0.32);' +
+      'width:100%;' +
+      'max-width:340px;' +
+      'align-self:center;' +
+      'box-sizing:border-box;' +
+      '}' +
       '.otp-unlock-instant-btn:hover{filter:brightness(1.08);}' +
-      '.otp-unlock-instant-btn:active{transform:scale(0.98);}';
+      '.otp-unlock-instant-btn:active{transform:scale(0.98);}' +
+      '.lightning-custom-cta.stat-button-link[data-otp-legacy-cta-hidden="1"]{display:none!important;visibility:hidden!important;pointer-events:none!important;}' +
+      '.result-wrap.otp-price-awaiting .advanced-pricing-vrp-card .price-stack .price-block.subtract,' +
+      '.result-wrap.otp-price-awaiting .advanced-pricing-vrp-card .price-stack .price-block.add,' +
+      '.result-wrap.otp-price-awaiting .price-stack .price-block.subtract,' +
+      '.result-wrap.otp-price-awaiting .price-stack .price-block.add,' +
+      '.result-wrap.otp-price-awaiting .advanced-pricing-stack .price-block.subtract,' +
+      '.result-wrap.otp-price-awaiting .advanced-pricing-stack .price-block.add,' +
+      '.result-wrap.otp-price-awaiting .advanced-pricing-vrp-card .advanced-pricing-stack .price-block.subtract,' +
+      '.result-wrap.otp-price-awaiting .advanced-pricing-vrp-card .advanced-pricing-stack .price-block.add{display:none!important;}' +
+      '.otp-celebration-layer{pointer-events:none;position:absolute;inset:0;z-index:60;overflow:visible;}' +
+      '.otp-celeb-confetti{' +
+      'position:absolute;width:9px;height:9px;border-radius:2px;opacity:1;' +
+      '}';
     document.head.appendChild(st);
   }
 
-  /** Remove blur overlays and unwrap shells everywhere */
-  function revealAllLockedPrices() {
-    document.querySelectorAll('.otp-price-lock-overlay').forEach(function (o) {
-      o.remove();
-    });
-    document.querySelectorAll('.otp-dealer-price-shell').forEach(function (shell) {
-      var row = shell.querySelector('.price-block.our-price.real-price');
-      if (!row || !shell.parentNode) return;
-      row.style.filter = '';
-      row.style.pointerEvents = '';
-      shell.parentNode.insertBefore(row, shell);
-      shell.parentNode.removeChild(shell);
-    });
+  /** Hide Dealer Inspire green "Get Today's Price" CTAs while our navy Unlock UI is shown */
+  function hideLegacyGetPriceCtasInCard(wrap) {
+    if (!wrap || !wrap.querySelectorAll) return;
+    var nodes = wrap.querySelectorAll('.lightning-custom-cta.stat-button-link');
+    for (var i = 0; i < nodes.length; i++) {
+      var node = nodes[i];
+      var txt = (node.textContent || '').replace(/\s+/g, ' ').trim();
+      if (!matchesGetTodaysPriceLabel(txt)) continue;
+      node.setAttribute('data-otp-legacy-cta-hidden', '1');
+      node.style.setProperty('display', 'none', 'important');
+      node.style.setProperty('visibility', 'hidden', 'important');
+      node.style.setProperty('pointer-events', 'none', 'important');
+    }
   }
 
   function safeParseDataVehicle(raw) {
@@ -78,10 +289,10 @@ Paste into GTM → Custom HTML. Set POPUP_ORIGIN (no trailing slash).
 
   function findVehicleCardRoot(el) {
     if (!el || typeof el.closest !== 'function') return null;
-    var r = el.closest('.result-wrap');
-    if (r) return r;
-    r = el.closest('[data-vehicle]');
-    if (r && r.getAttribute('data-vehicle')) return r;
+    var cardRoot = el.closest('.result-wrap');
+    if (cardRoot) return cardRoot;
+    cardRoot = el.closest('[data-vehicle]');
+    if (cardRoot && cardRoot.getAttribute('data-vehicle')) return cardRoot;
     return document.querySelector('.result-wrap[data-vehicle]') || document.querySelector('[data-vehicle]');
   }
 
@@ -151,6 +362,9 @@ Paste into GTM → Custom HTML. Set POPUP_ORIGIN (no trailing slash).
 
     var pageUrl = window.location.href;
     var ctx = parseVehicleFromClick(root || document.body);
+    try {
+      window.__otpLastUnlockCtx = { vin: ctx.vin || '', stock: ctx.stock || '' };
+    } catch (e) {}
     var vin = ctx.vin;
     var stock = ctx.stock;
     var price = ctx.price;
@@ -224,28 +438,72 @@ Paste into GTM → Custom HTML. Set POPUP_ORIGIN (no trailing slash).
     document.body.appendChild(overlay);
   }
 
-  /** Mask dealer price row + navy suspense UI */
-  function applyPriceLockToCard(wrap) {
-    var row = wrap.querySelector('.price-block.our-price.real-price');
-    if (!row) return;
+  /** Final “dealer / our price” row — markup varies by Dealer Inspire theme */
+  function findDealerPriceRow(wrap) {
+    if (!wrap || !wrap.querySelector) return null;
+    return (
+      wrap.querySelector('.price-block.our-price.real-price') ||
+      wrap.querySelector('.price-block.our-price') ||
+      wrap.querySelector('.our-price.real-price') ||
+      wrap.querySelector('.hit-price .our-price.real-price') ||
+      wrap.querySelector('.advanced-pricing-stack .price-block.our-price') ||
+      wrap.querySelector('.price-stack .price-block.our-price')
+    );
+  }
 
-    if (isPriceUnlocked()) {
-      if (row.closest('.otp-dealer-price-shell')) {
-        var shell = row.closest('.otp-dealer-price-shell');
-        var ov = shell.querySelector('.otp-price-lock-overlay');
-        if (ov) ov.remove();
-        row.style.filter = '';
-        row.style.pointerEvents = '';
-        if (shell.parentNode) {
-          shell.parentNode.insertBefore(row, shell);
-          shell.parentNode.removeChild(shell);
-        }
-      } else {
-        row.style.filter = '';
-        row.style.pointerEvents = '';
+  /**
+   * After the real dealer price is shown: restore everything we hid for suspense (stack rows, overlays)
+   * but keep the legacy “Get Today’s Price” link suppressed via hideLegacyGetPriceCtasInCard.
+   */
+  function finalizePriceRevealOnCard(wrap) {
+    if (!wrap || !wrap.querySelectorAll) return;
+    wrap.classList.remove('otp-price-awaiting');
+    wrap.classList.add('otp-price-revealed');
+    var strayOverlays = wrap.querySelectorAll('.otp-price-lock-overlay');
+    var i;
+    for (i = 0; i < strayOverlays.length; i++) strayOverlays[i].remove();
+    var shells = wrap.querySelectorAll('.otp-dealer-price-shell');
+    for (var j = shells.length - 1; j >= 0; j--) {
+      var sh = shells[j];
+      var pr =
+        sh.querySelector('.price-block.our-price.real-price') ||
+        sh.querySelector('.price-block.our-price');
+      if (pr && sh.parentNode) {
+        pr.style.filter = '';
+        pr.style.pointerEvents = '';
+        sh.parentNode.insertBefore(pr, sh);
+        sh.parentNode.removeChild(sh);
       }
+    }
+    var dealerRow = findDealerPriceRow(wrap);
+    if (dealerRow) {
+      dealerRow.style.filter = '';
+      dealerRow.style.pointerEvents = '';
+    }
+    hideLegacyGetPriceCtasInCard(wrap);
+  }
+
+  /** Mask dealer price row + navy suspense UI (per-vehicle unlock) */
+  function applyPriceLockToCard(wrap) {
+    wrap.classList.remove('otp-price-awaiting');
+
+    var row = findDealerPriceRow(wrap);
+    if (!row) {
+      hideLegacyGetPriceCtasInCard(wrap);
       return;
     }
+
+    hideLegacyGetPriceCtasInCard(wrap);
+
+    var ctx = parseVehicleFromClick(wrap);
+    var ukey = unlockKeyFromContext(ctx);
+
+    if (ukey && isKeyUnlocked(ukey)) {
+      finalizePriceRevealOnCard(wrap);
+      return;
+    }
+
+    wrap.classList.add('otp-price-awaiting');
 
     if (row.closest('.otp-dealer-price-shell')) return;
 
@@ -259,44 +517,14 @@ Paste into GTM → Custom HTML. Set POPUP_ORIGIN (no trailing slash).
 
     var overlay = document.createElement('div');
     overlay.className = 'otp-price-lock-overlay';
-    overlay.style.cssText = [
-      'position:absolute',
-      'left:0',
-      'right:0',
-      'top:0',
-      'bottom:0',
-      'display:flex',
-      'flex-direction:column',
-      'align-items:center',
-      'justify-content:center',
-      'background:rgba(255,255,255,0.96)',
-      'z-index:4',
-      'padding:14px 12px 18px',
-      'box-sizing:border-box'
-    ].join(';');
 
     overlay.innerHTML =
-      '<div style="display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:center;gap:8px 18px;max-width:100%;">' +
-        '<div style="text-align:right;line-height:1.2;">' +
-          '<div style="font-weight:700;color:#111;font-size:14px;font-family:system-ui,-apple-system,sans-serif;">Want a Lower Price?</div>' +
-          '<div style="font-weight:800;color:' +
-          NAVY +
-          ';font-size:21px;font-family:system-ui,-apple-system,sans-serif;margin-top:2px;">START HERE!</div>' +
-        '</div>' +
-        '<div style="flex-shrink:0;margin-top:2px;">' +
-          '<svg width="54" height="40" viewBox="0 0 54 40" aria-hidden="true">' +
-            '<path d="M6 4 Q26 2 40 14 Q46 22 42 32" stroke="' +
-            NAVY +
-            '" stroke-width="2.3" fill="none" stroke-linecap="round"/>' +
-            '<path d="M36 28 L42 32 L38 36" stroke="' +
-            NAVY +
-            '" stroke-width="2.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>' +
-          '</svg>' +
-        '</div>' +
+      '<div class="otp-price-teaser-img-wrap">' +
+        '<img class="otp-price-teaser-img" src="' +
+        PRICE_TEASER_IMAGE_URL +
+        '" alt="Want a Lower Price? Start here." width="640" height="200" loading="lazy" decoding="async"/>' +
       '</div>' +
-      '<button type="button" class="otp-unlock-instant-btn" style="margin-top:12px;background:' +
-      NAVY +
-      ';color:#fff;border:none;padding:13px 26px;border-radius:999px;font-weight:700;font-size:15px;cursor:pointer;display:inline-flex;align-items:center;gap:10px;font-family:system-ui,-apple-system,sans-serif;box-shadow:0 4px 14px rgba(5,33,79,0.32);">' +
+      '<button type="button" class="otp-unlock-instant-btn">' +
       '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M7 11V8a5 5 0 0 1 10 0v3"/></svg>' +
       'Unlock Instant Price</button>';
 
@@ -306,6 +534,9 @@ Paste into GTM → Custom HTML. Set POPUP_ORIGIN (no trailing slash).
     btn.addEventListener('click', function (ev) {
       ev.preventDefault();
       ev.stopPropagation();
+      if (isGloballyVerified()) {
+        if (revealCardPriceWithoutPopup(wrap)) return;
+      }
       openOtpPopupFromRoot(wrap);
     });
   }
@@ -337,14 +568,51 @@ Paste into GTM → Custom HTML. Set POPUP_ORIGIN (no trailing slash).
         return;
       }
       if (d && typeof d === 'object') {
-        if (d.type === 'OTP_SUCCESS') {
-          setPriceUnlocked();
-          revealAllLockedPrices();
-          injectPriceTeasersOnPage();
-          if (window.dataLayer && Array.isArray(window.dataLayer)) {
-            window.dataLayer.push({ event: 'otp_verification_success', otp_user: d.payload });
-          }
+        if (d.type === 'OTP_VEHICLE_KEYS') {
+          setGloballyVerified();
+          var kk = unlockKeyFromContext({ vin: d.vin, stock: d.stock });
+          if (kk) addUnlockedKey(kk);
           removePopupOverlay();
+          injectPriceTeasersOnPage();
+          requestAnimationFrame(function () {
+            injectPriceTeasersOnPage();
+            guardedCelebrateVehicle(d.vin, d.stock);
+          });
+          return;
+        }
+        if (d.type === 'OTP_SUCCESS') {
+          setGloballyVerified();
+          var ukey =
+            unlockKeyFromPayload(d.payload) ||
+            unlockKeyFromContext(window.__otpLastUnlockCtx);
+          if (ukey) addUnlockedKey(ukey);
+          removePopupOverlay();
+          injectPriceTeasersOnPage();
+          requestAnimationFrame(function () {
+            injectPriceTeasersOnPage();
+            var vinS = '';
+            var stockS = '';
+            var pcar = d.payload && d.payload.car;
+            if (pcar && typeof pcar === 'object') {
+              vinS = String(pcar.vin || '');
+              stockS = String(pcar.stock || '');
+            }
+            if (!vinS && !stockS) {
+              try {
+                var lx = window.__otpLastUnlockCtx;
+                if (lx) {
+                  vinS = String(lx.vin || '');
+                  stockS = String(lx.stock || '');
+                }
+              } catch (e2) {}
+            }
+            guardedCelebrateVehicle(vinS, stockS);
+          });
+          if (window.dataLayer && Array.isArray(window.dataLayer)) {
+            var p = d.payload;
+            var user = p && p.user ? p.user : p;
+            window.dataLayer.push({ event: 'otp_verification_success', otp_user: user, otp_car: p && p.car ? p.car : null });
+          }
           return;
         }
         if (d.type === 'OTP_CLOSE') {
@@ -361,8 +629,7 @@ Paste into GTM → Custom HTML. Set POPUP_ORIGIN (no trailing slash).
     });
 
     window.addEventListener('storage', function (ev) {
-      if (ev.key !== STORAGE_KEY || !ev.newValue) return;
-      revealAllLockedPrices();
+      if (ev.key !== VINS_STORAGE_KEY && ev.key !== GLOBAL_VERIFY_KEY) return;
       injectPriceTeasersOnPage();
     });
   }
@@ -371,7 +638,7 @@ Paste into GTM → Custom HTML. Set POPUP_ORIGIN (no trailing slash).
     var elements = document.querySelectorAll('a, button, [class*="price"], [class*="cta"]');
     for (var i = 0; i < elements.length; i++) {
       var el = elements[i];
-      if (!el.textContent || !el.textContent.trim().match(/get today.?s price/i)) continue;
+      if (!matchesGetTodaysPriceLabel(el.textContent || '')) continue;
       if (el.dataset.popupBound) continue;
       el.dataset.popupBound = 'true';
 
@@ -382,11 +649,19 @@ Paste into GTM → Custom HTML. Set POPUP_ORIGIN (no trailing slash).
       clone.addEventListener(
         'click',
         function (e) {
-          if (isPriceUnlocked()) return;
+          var root = findVehicleCardRoot(e.target);
+          var k = unlockKeyFromContext(parseVehicleFromClick(root || e.target));
+          if (k && isKeyUnlocked(k)) return;
+          if (isGloballyVerified() && root && revealCardPriceWithoutPopup(root)) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            return;
+          }
           e.preventDefault();
           e.stopPropagation();
           e.stopImmediatePropagation();
-          openOtpPopupFromRoot(findVehicleCardRoot(e.target));
+          openOtpPopupFromRoot(root);
         },
         true
       );
@@ -394,8 +669,8 @@ Paste into GTM → Custom HTML. Set POPUP_ORIGIN (no trailing slash).
   }
 
   function runAll() {
-    injectPriceTeasersOnPage();
     injectPopup();
+    injectPriceTeasersOnPage();
   }
 
   var observer = new MutationObserver(function () {
@@ -411,10 +686,13 @@ Paste into GTM → Custom HTML. Set POPUP_ORIGIN (no trailing slash).
     setTimeout(runAll, 800);
   }
 
-  /* First paint if already verified */
-  if (isPriceUnlocked()) {
-    revealAllLockedPrices();
-    setTimeout(runAll, 100);
-  }
+  /** Custom site buttons: onclick="window.openOtpPriceEnquiryPopup(this)" or open…() with no arg */
+  window.openOtpPriceEnquiryPopup = function (fromEl) {
+    var root =
+      fromEl && fromEl.nodeType === 1 ? findVehicleCardRoot(fromEl) : null;
+    var useRoot = root || document.body;
+    if (isGloballyVerified() && revealCardPriceWithoutPopup(useRoot)) return;
+    openOtpPopupFromRoot(useRoot);
+  };
 })();
 </script>

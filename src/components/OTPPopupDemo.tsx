@@ -103,7 +103,7 @@ export default function OTPPopupDemo() {
         <OTPPopup
           onClose={() => setOpen(false)}
           onSuccess={(data) => {
-            setVerified(data);
+            setVerified(data.user);
             setOpen(false);
           }}
         />

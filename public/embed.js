@@ -56,11 +56,14 @@
 
       if (e.data?.type === "OTP_SUCCESS") {
         hidePopup();
+        const p = e.data.payload;
+        const user =
+          p && typeof p === "object" && "user" in p ? p.user : p;
         if (onSuccessFnName && typeof window[onSuccessFnName] === "function") {
-          window[onSuccessFnName](e.data.payload);
+          window[onSuccessFnName](user);
         }
         document.dispatchEvent(
-          new CustomEvent("otp:success", { detail: e.data.payload })
+          new CustomEvent("otp:success", { detail: p })
         );
       }
 

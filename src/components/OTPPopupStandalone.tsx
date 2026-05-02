@@ -25,10 +25,21 @@ export default function OTPPopupStandalone() {
     return () => window.removeEventListener("message", handler);
   }, []);
 
-  const handleSuccess = (data: unknown) => {
+  const handleSuccess = (data: { user: unknown; car: unknown }) => {
     console.log("OTPPopupStandalone: handleSuccess received", data);
     // Parent (WordPress overlay) must remove the iframe on these events — otherwise the iframe goes blank (React unmounts).
     window.parent.postMessage({ type: "OTP_SUCCESS", payload: data }, "*");
+    const car = data.car as { vin?: string; stock?: string } | undefined;
+    if (car && (car.vin || car.stock)) {
+      window.parent.postMessage(
+        {
+          type: "OTP_VEHICLE_KEYS",
+          vin: String(car.vin || ""),
+          stock: String(car.stock || ""),
+        },
+        "*",
+      );
+    }
     window.parent.postMessage({ type: "OTP_CLOSE" }, "*");
     window.parent.postMessage("close-popup", "*");
     setOpen(false);
