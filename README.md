@@ -35,9 +35,24 @@ Edit `.env.local` and fill in your Twilio credentials:
 TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 TWILIO_AUTH_TOKEN=your_auth_token
 TWILIO_PHONE_NUMBER=+1xxxxxxxxxx
+# Optional (recommended for better deliverability):
+# TWILIO_MESSAGING_SERVICE_SID=MGxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# Optional (helps local-number input, e.g. 91 for India):
+# DEFAULT_COUNTRY_CODE=91
+
+# Supabase (verified leads — optional)
+# SUPABASE_URL=https://xxxx.supabase.co
+# NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
+# SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+# SUPABASE_LEADS_TABLE=otp_leads
 ```
 
+Run the SQL in `supabase/migrations/001_otp_leads.sql` in the Supabase SQL editor to create the table, then `002_otp_leads_vehicle_snapshot.sql` for the optional JSON column (`vehicle_snapshot`).
+
+WordPress GTM iframe URLs should pass vehicle data like `?vin=&stock=&price=&vehicle=&page_url=` (see `public/gtm-wordpress-snippet.example.txt`).
+
 > **No Twilio yet?** Leave these blank — OTPs will be logged to your terminal console instead (dev mode).
+> **Twilio trial note:** Trial accounts can only send to phone numbers you verified in Twilio Console.
 
 ### 3. Run the dev server
 

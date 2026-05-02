@@ -23,6 +23,12 @@ interface CarData {
   price: string;
   vin: string;
   stock: string;
+  /** Optional tag from query (?source=) — not the parent page URL */
+  source: string;
+  /** WordPress / embedder page URL */
+  pageUrl: string;
+  /** Full vehicle payload from parent (e.g. Dealer Inspire `data-vehicle` JSON) */
+  vehicleSnapshot?: Record<string, unknown> | null;
 }
 
 type Step = "form" | "otp" | "success";
@@ -60,19 +66,53 @@ export default function OTPPopup({ onSuccess, onClose, apiBase = "" }: OTPPopupP
     title: "",
     price: "",
     vin: "",
-    stock: ""
+    stock: "",
+    source: "",
+    pageUrl: "",
   });
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      setCarData({
-        title: params.get("title") || "",
-        price: params.get("price") || "",
-        vin: params.get("vin") || "",
-        stock: params.get("stock") || ""
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const referrer = document.referrer || "";
+    setCarData({
+      title: params.get("vehicle") || params.get("title") || "",
+      price: params.get("price") || "",
+      vin: params.get("vin") || "",
+      stock: params.get("stock") || "",
+      source: params.get("source") || "",
+      pageUrl:
+        params.get("page_url") ||
+        params.get("pageUrl") ||
+        params.get("referrer") ||
+        referrer ||
+        "",
+    });
+  }, []);
+
+  useEffect(() => {
+    const onMsg = (e: MessageEvent) => {
+      const d = e.data;
+      if (!d || d.type !== "OTP_EMBED_CONTEXT") return;
+      const str = (v: unknown) => (typeof v === "string" ? v : "");
+      setCarData((prev) => {
+        const snap =
+          d.vehicleData != null && typeof d.vehicleData === "object" && !Array.isArray(d.vehicleData)
+            ? (d.vehicleData as Record<string, unknown>)
+            : prev.vehicleSnapshot;
+        return {
+          title: str(d.vehicle) || str(d.title) || prev.title,
+          price: str(d.price) || prev.price,
+          vin: str(d.vin) || prev.vin,
+          stock: str(d.stock) || prev.stock,
+          source: str(d.source) || prev.source,
+          pageUrl: str(d.pageUrl) || str(d.page_url) || prev.pageUrl,
+          vehicleSnapshot: snap ?? prev.vehicleSnapshot,
+        };
       });
-    }
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
   }, []);
 
   useEffect(() => {
@@ -184,7 +224,6 @@ export default function OTPPopup({ onSuccess, onClose, apiBase = "" }: OTPPopupP
       console.log("OTP Verification successful. UserData:", userData);
 
       try { sessionStorage.setItem("otp_verified_user", JSON.stringify(userData)); } catch (_) { }
-      try { window.parent.postMessage({ success: true }, "*"); } catch (_) { }
 
       setStep("success");
       onSuccess?.(userData);
@@ -273,11 +312,17 @@ export default function OTPPopup({ onSuccess, onClose, apiBase = "" }: OTPPopupP
                   color: "#fff", fontSize: 26, fontWeight: 800, lineHeight: 1.2,
                   letterSpacing: "-0.03em", fontStyle: "italic", marginBottom: 16,
                 }}>
-                  Unlock Your<br />Instant Price
+                  {carData.title ? `Unlock Price for ${carData.title}` : "Unlock Your Instant Price"}
                 </h2>
                 <p style={{ color: "#ffffff99", fontSize: 13, lineHeight: 1.7 }}>
-                  Please provide your contact information to reveal this vehicle's Instant Price
+                  {carData.price ? `Current MSRP: $${carData.price}. ` : ""}
+                  Please provide your contact information to reveal this vehicle's Instant Price.
                 </p>
+                {carData.source && (
+                  <div style={{ marginTop: 20, fontSize: 10, color: "#ffffff44", wordBreak: "break-all" }}>
+                    Source: {carData.source}
+                  </div>
+                )}
               </div>
 
               <div className="desktop-only" style={{ marginTop: "auto", paddingTop: 32 }}>
@@ -465,7 +510,7 @@ export default function OTPPopup({ onSuccess, onClose, apiBase = "" }: OTPPopupP
             </h2>
             <p style={{ fontSize: 14, color: "#6b7280", marginBottom: 36, lineHeight: 1.6 }}>
               Check your {preferredContact === "Email" ? "email" : "phone"} for the 6-digit code sent to{" "}
-              <strong style={{ color: "#111827" }}>+1 {cleanPhone}</strong>.
+              <strong style={{ color: "#111827" }}>{cleanPhone}</strong>.
               {devMode && <span style={{ display: "block", marginTop: 6, background: "#fef3c7", color: "#92400e", fontSize: 12, padding: "4px 8px", borderRadius: 4, fontWeight: 600 }}>DEV MODE: Check your terminal for the OTP</span>}
             </p>
 
@@ -546,7 +591,7 @@ export default function OTPPopup({ onSuccess, onClose, apiBase = "" }: OTPPopupP
               {[
                 { icon: "👤", label: "Name", value: `${firstName} ${lastName}`.trim() },
                 { icon: "📧", label: "Email", value: email },
-                { icon: "📱", label: "Phone", value: `+1 ${cleanPhone}` },
+                { icon: "📱", label: "Phone", value: cleanPhone },
                 { icon: "💬", label: "Preferred", value: preferredContact },
               ].map(({ icon, label, value }) => (
                 <div key={label} style={{ display: "flex", alignItems: "center", gap: 12 }}>

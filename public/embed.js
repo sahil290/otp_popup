@@ -59,13 +59,12 @@
         if (onSuccessFnName && typeof window[onSuccessFnName] === "function") {
           window[onSuccessFnName](e.data.payload);
         }
-        // Also dispatch a custom DOM event
         document.dispatchEvent(
           new CustomEvent("otp:success", { detail: e.data.payload })
         );
       }
 
-      if (e.data?.type === "OTP_CLOSE") {
+      if (e.data?.type === "OTP_CLOSE" || e.data === "close-popup") {
         hidePopup();
         document.dispatchEvent(new CustomEvent("otp:close"));
       }

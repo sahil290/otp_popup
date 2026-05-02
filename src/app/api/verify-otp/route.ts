@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 import { verifyOTP } from "@/lib/otpStore";
+import { normalizePhone } from "@/lib/phone";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 interface UserData {
   firstName: string;
@@ -18,6 +20,49 @@ interface CarData {
   price: string;
   vin: string;
   stock: string;
+  source?: string;
+  pageUrl?: string;
+  vehicleSnapshot?: Record<string, unknown> | null;
+}
+
+async function saveLeadToSupabase(userData: UserData, carData?: CarData) {
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    console.warn(
+      "[SUPABASE] Lead not saved: set SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL) and SUPABASE_SERVICE_ROLE_KEY on the server.",
+    );
+    return;
+  }
+
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return;
+
+  const table = process.env.SUPABASE_LEADS_TABLE || "otp_leads";
+  const row = {
+    first_name: userData.firstName ?? "",
+    last_name: userData.lastName ?? "",
+    phone: userData.phone,
+    email: userData.email || null,
+    preferred_contact: userData.preferredContact || null,
+    comments: userData.comments || null,
+    verified_at: userData.verifiedAt || null,
+    vehicle_title: carData?.title || null,
+    price: carData?.price || null,
+    vin: carData?.vin || null,
+    stock: carData?.stock || null,
+    page_url: carData?.pageUrl || null,
+    embed_source: carData?.source || null,
+    vehicle_snapshot: carData?.vehicleSnapshot ?? null,
+  };
+
+  const { error, data } = await supabase.from(table).insert(row).select("id");
+  if (error) {
+    console.error("[SUPABASE] insert failed:", error.message, error.code, error.details, error.hint);
+    return;
+  }
+  const inserted = Array.isArray(data) ? data[0] : data;
+  console.log("[SUPABASE] Lead inserted:", table, inserted?.id ?? "(no id)");
 }
 
 async function sendAdminEmail(userData: UserData, carData?: CarData) {
@@ -76,7 +121,10 @@ async function sendAdminEmail(userData: UserData, carData?: CarData) {
 
 Message:  ${userData.comments || "No comments"}
 
-URL:  ]]></comments>
+Page URL: ${carData?.pageUrl || ""}
+
+Embed source param: ${carData?.source || ""}
+]]></comments>
         </vehicle>
         <customer>
             <contact>
@@ -158,8 +206,7 @@ export async function POST(req: NextRequest) {
 
     const name = `${firstName} ${lastName}`.trim();
 
-    let normalized = phone.replace(/\D/g, "");
-    let fullPhone = "+" + normalized;
+    const { digits: normalized, e164: fullPhone } = normalizePhone(phone);
     
     console.log(`[OTP STORE] Verifying OTP for phone key: "${normalized}"`);
 
@@ -183,6 +230,7 @@ export async function POST(req: NextRequest) {
       // Send email notification to admin
       try {
         const adminUserData = { ...userData, phone: fullPhone };
+        await saveLeadToSupabase(adminUserData, carData);
         await sendAdminEmail(adminUserData, carData);
       } catch (emailError) {
         console.error("Email sending failed (Local Verify):", emailError);
@@ -211,8 +259,9 @@ export async function POST(req: NextRequest) {
 
     // Send email notification to admin
     try {
-      console.log("Attempting to send admin email...");
+      console.log("Attempting to save lead and send admin email...");
       const adminUserData = { ...userData, phone: fullPhone };
+      await saveLeadToSupabase(adminUserData, carData);
       await sendAdminEmail(adminUserData, carData);
       console.log("Admin email processed.");
     } catch (emailError) {
@@ -228,7 +277,13 @@ export async function POST(req: NextRequest) {
       },
       { status: 200, headers: { "Access-Control-Allow-Origin": "*" } },
     );
-  } catch (e) {
+  } catch (e: any) {
+    if (e?.message?.includes("Invalid phone number")) {
+      return NextResponse.json(
+        { error: e.message },
+        { status: 400, headers: { "Access-Control-Allow-Origin": "*" } },
+      );
+    }
     console.error("Verify OTP error:", e);
     return NextResponse.json(
       { error: "Internal server error" },

@@ -21,18 +21,22 @@ export default function OTPPopupStandalone() {
       if (e.data?.type === "OTP_OPEN") setOpen(true);
       if (e.data?.type === "OTP_CLOSE") setOpen(false);
     };
-    window.addEventListener("message", handler);``
+    window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
   }, []);
 
-  const handleSuccess = (data: any) => {
+  const handleSuccess = (data: unknown) => {
     console.log("OTPPopupStandalone: handleSuccess received", data);
+    // Parent (WordPress overlay) must remove the iframe on these events — otherwise the iframe goes blank (React unmounts).
     window.parent.postMessage({ type: "OTP_SUCCESS", payload: data }, "*");
+    window.parent.postMessage({ type: "OTP_CLOSE" }, "*");
+    window.parent.postMessage("close-popup", "*");
     setOpen(false);
   };
 
   const handleClose = () => {
     window.parent.postMessage({ type: "OTP_CLOSE" }, "*");
+    window.parent.postMessage("close-popup", "*");
     setOpen(false);
   };
 

@@ -1,0 +1,420 @@
+WordPress + Google Tag Manager — OTP iframe + hidden dealer price until verified
+===================================================================================
+
+Behavior
+--------
+- Masks "AM Ford Price" / `.price-block.our-price.real-price` on each inventory card with a
+  navy teaser ("Want a Lower Price?", "START HERE!", arrow, "Unlock Instant Price").
+- "Unlock Instant Price" and "Get Today's Price" open the OTP iframe (same flow).
+- After OTP_SUCCESS, sets localStorage and reveals ALL masked prices on the page (no blur).
+- On later visits or other cards: if localStorage is set, prices stay visible and "Get Today's Price"
+  does NOT open the popup (instant reveal — nothing left to mask).
+
+Paste into GTM → Custom HTML. Set POPUP_ORIGIN (no trailing slash).
+
+<script>
+(function () {
+  var POPUP_ORIGIN = 'https://otp-popup.vercel.app';
+  var STORAGE_KEY = 'otp_popup_price_unlocked_v1';
+  var NAVY = '#05214F';
+
+  function removePopupOverlay() {
+    var overlay = document.getElementById('custom-price-popup');
+    if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+  }
+
+  function isPriceUnlocked() {
+    try {
+      return !!localStorage.getItem(STORAGE_KEY);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function setPriceUnlocked() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ unlockedAt: Date.now() }));
+    } catch (e) {}
+  }
+
+  function injectStylesOnce() {
+    if (document.getElementById('otp-price-lock-styles')) return;
+    var st = document.createElement('style');
+    st.id = 'otp-price-lock-styles';
+    st.textContent =
+      '.otp-dealer-price-shell{position:relative;margin:0;padding:0;}' +
+      '.otp-unlock-instant-btn:hover{filter:brightness(1.08);}' +
+      '.otp-unlock-instant-btn:active{transform:scale(0.98);}';
+    document.head.appendChild(st);
+  }
+
+  /** Remove blur overlays and unwrap shells everywhere */
+  function revealAllLockedPrices() {
+    document.querySelectorAll('.otp-price-lock-overlay').forEach(function (o) {
+      o.remove();
+    });
+    document.querySelectorAll('.otp-dealer-price-shell').forEach(function (shell) {
+      var row = shell.querySelector('.price-block.our-price.real-price');
+      if (!row || !shell.parentNode) return;
+      row.style.filter = '';
+      row.style.pointerEvents = '';
+      shell.parentNode.insertBefore(row, shell);
+      shell.parentNode.removeChild(shell);
+    });
+  }
+
+  function safeParseDataVehicle(raw) {
+    if (!raw || typeof raw !== 'string') return null;
+    try {
+      return JSON.parse(raw);
+    } catch (e1) {
+      try {
+        return JSON.parse(raw.replace(/&quot;/g, '"'));
+      } catch (e2) {
+        return null;
+      }
+    }
+  }
+
+  function findVehicleCardRoot(el) {
+    if (!el || typeof el.closest !== 'function') return null;
+    var r = el.closest('.result-wrap');
+    if (r) return r;
+    r = el.closest('[data-vehicle]');
+    if (r && r.getAttribute('data-vehicle')) return r;
+    return document.querySelector('.result-wrap[data-vehicle]') || document.querySelector('[data-vehicle]');
+  }
+
+  function digitsFromPriceText(txt) {
+    if (!txt) return '';
+    var n = String(txt).replace(/[^0-9.]/g, '');
+    return n || '';
+  }
+
+  function parseVehicleFromClick(clickTarget) {
+    var el = clickTarget && clickTarget.nodeType === 1 ? clickTarget : document.body;
+    var root = findVehicleCardRoot(el);
+
+    var vin = '';
+    var stock = '';
+    var price = '';
+    var vehicle = '';
+    var vehicleData = null;
+
+    if (root) {
+      var raw = root.getAttribute('data-vehicle');
+      if (raw) {
+        vehicleData = safeParseDataVehicle(raw);
+        if (vehicleData && typeof vehicleData === 'object') {
+          vin = String(vehicleData.vin || '');
+          stock = vehicleData.stock != null ? String(vehicleData.stock) : '';
+          if (vehicleData.price != null) price = String(vehicleData.price);
+          else if (vehicleData.msrp != null) price = String(vehicleData.msrp);
+          var parts = [vehicleData.year, vehicleData.make, vehicleData.model, vehicleData.trim].filter(function (x) {
+            return x != null && String(x).trim() !== '';
+          });
+          if (parts.length) vehicle = parts.join(' ');
+        }
+      }
+      if (!vin) vin = root.getAttribute('data-vehicle-vin') || '';
+      if (!vehicle) {
+        var titleEl = root.querySelector('h2.result-title, [data-testid="vehicle-title"]');
+        if (titleEl) vehicle = titleEl.innerText.replace(/\s+/g, ' ').trim();
+      }
+      if (!price) {
+        var pe =
+          root.querySelector('.price-block.our-price.real-price .price') ||
+          root.querySelector('.our-price.real-price span.price') ||
+          root.querySelector('.hit-price .our-price .price');
+        if (pe) price = digitsFromPriceText(pe.textContent);
+      }
+      if (!price) {
+        var dsp = root.querySelector('[data-sales-price]');
+        if (dsp) price = dsp.getAttribute('data-sales-price') || '';
+      }
+    }
+
+    if (!vehicle) {
+      var h1 = document.querySelector('h1');
+      if (h1) vehicle = h1.innerText.replace(/\s+/g, ' ').trim();
+    }
+    if (!vin) {
+      var vv = document.querySelector('[data-vehicle-vin]');
+      if (vv) vin = vv.getAttribute('data-vehicle-vin') || '';
+    }
+
+    return { vin: vin, stock: stock, price: price, vehicle: vehicle, vehicleData: vehicleData };
+  }
+
+  function openOtpPopupFromRoot(root) {
+    removePopupOverlay();
+
+    var pageUrl = window.location.href;
+    var ctx = parseVehicleFromClick(root || document.body);
+    var vin = ctx.vin;
+    var stock = ctx.stock;
+    var price = ctx.price;
+    var vehicle = ctx.vehicle;
+    var vehicleData = ctx.vehicleData;
+
+    var overlay = document.createElement('div');
+    overlay.id = 'custom-price-popup';
+    overlay.style.cssText =
+      'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);z-index:2147483647;display:flex;align-items:center;justify-content:center;';
+
+    var box = document.createElement('div');
+    box.style.cssText =
+      'position:relative;width:100%;max-width:1000px;height:100vh;background:#fff;overflow:hidden;';
+
+    var closeBtn = document.createElement('button');
+    closeBtn.setAttribute('aria-label', 'Close');
+    closeBtn.innerHTML = '×';
+    closeBtn.style.cssText =
+      'position:absolute;top:12px;right:16px;background:#fff;border:none;font-size:22px;cursor:pointer;z-index:10;width:36px;height:36px;border-radius:50%;box-shadow:0 4px 10px rgba(0,0,0,0.15);';
+    closeBtn.onclick = function () {
+      removePopupOverlay();
+    };
+
+    var iframe = document.createElement('iframe');
+    var params =
+      '?vin=' + encodeURIComponent(vin) +
+      '&stock=' + encodeURIComponent(stock) +
+      '&price=' + encodeURIComponent(price) +
+      '&vehicle=' + encodeURIComponent(vehicle) +
+      '&page_url=' + encodeURIComponent(pageUrl);
+
+    iframe.src = POPUP_ORIGIN + '/' + params;
+    iframe.style.cssText =
+      'width:100%;height:100%;border:none;display:block;background:#fff;overflow:hidden;';
+
+    iframe.addEventListener('load', function () {
+      try {
+        var snapshot =
+          vehicleData && typeof vehicleData === 'object'
+            ? Object.assign({}, vehicleData, { embed_page_url: pageUrl })
+            : {
+                vin: vin,
+                stock: stock,
+                price: price,
+                vehicle_heading: vehicle,
+                embed_page_url: pageUrl
+              };
+        iframe.contentWindow.postMessage(
+          {
+            type: 'OTP_EMBED_CONTEXT',
+            pageUrl: pageUrl,
+            vin: vin,
+            stock: stock,
+            price: price,
+            vehicle: vehicle,
+            vehicleData: snapshot
+          },
+          '*'
+        );
+      } catch (err) {}
+    });
+
+    overlay.addEventListener('click', function (ev) {
+      if (ev.target === overlay) removePopupOverlay();
+    });
+
+    box.appendChild(closeBtn);
+    box.appendChild(iframe);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+  }
+
+  /** Mask dealer price row + navy suspense UI */
+  function applyPriceLockToCard(wrap) {
+    var row = wrap.querySelector('.price-block.our-price.real-price');
+    if (!row) return;
+
+    if (isPriceUnlocked()) {
+      if (row.closest('.otp-dealer-price-shell')) {
+        var shell = row.closest('.otp-dealer-price-shell');
+        var ov = shell.querySelector('.otp-price-lock-overlay');
+        if (ov) ov.remove();
+        row.style.filter = '';
+        row.style.pointerEvents = '';
+        if (shell.parentNode) {
+          shell.parentNode.insertBefore(row, shell);
+          shell.parentNode.removeChild(shell);
+        }
+      } else {
+        row.style.filter = '';
+        row.style.pointerEvents = '';
+      }
+      return;
+    }
+
+    if (row.closest('.otp-dealer-price-shell')) return;
+
+    var shell = document.createElement('div');
+    shell.className = 'otp-dealer-price-shell';
+    row.parentNode.insertBefore(shell, row);
+    shell.appendChild(row);
+
+    row.style.filter = 'blur(11px)';
+    row.style.pointerEvents = 'none';
+
+    var overlay = document.createElement('div');
+    overlay.className = 'otp-price-lock-overlay';
+    overlay.style.cssText = [
+      'position:absolute',
+      'left:0',
+      'right:0',
+      'top:0',
+      'bottom:0',
+      'display:flex',
+      'flex-direction:column',
+      'align-items:center',
+      'justify-content:center',
+      'background:rgba(255,255,255,0.96)',
+      'z-index:4',
+      'padding:14px 12px 18px',
+      'box-sizing:border-box'
+    ].join(';');
+
+    overlay.innerHTML =
+      '<div style="display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:center;gap:8px 18px;max-width:100%;">' +
+        '<div style="text-align:right;line-height:1.2;">' +
+          '<div style="font-weight:700;color:#111;font-size:14px;font-family:system-ui,-apple-system,sans-serif;">Want a Lower Price?</div>' +
+          '<div style="font-weight:800;color:' +
+          NAVY +
+          ';font-size:21px;font-family:system-ui,-apple-system,sans-serif;margin-top:2px;">START HERE!</div>' +
+        '</div>' +
+        '<div style="flex-shrink:0;margin-top:2px;">' +
+          '<svg width="54" height="40" viewBox="0 0 54 40" aria-hidden="true">' +
+            '<path d="M6 4 Q26 2 40 14 Q46 22 42 32" stroke="' +
+            NAVY +
+            '" stroke-width="2.3" fill="none" stroke-linecap="round"/>' +
+            '<path d="M36 28 L42 32 L38 36" stroke="' +
+            NAVY +
+            '" stroke-width="2.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>' +
+          '</svg>' +
+        '</div>' +
+      '</div>' +
+      '<button type="button" class="otp-unlock-instant-btn" style="margin-top:12px;background:' +
+      NAVY +
+      ';color:#fff;border:none;padding:13px 26px;border-radius:999px;font-weight:700;font-size:15px;cursor:pointer;display:inline-flex;align-items:center;gap:10px;font-family:system-ui,-apple-system,sans-serif;box-shadow:0 4px 14px rgba(5,33,79,0.32);">' +
+      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M7 11V8a5 5 0 0 1 10 0v3"/></svg>' +
+      'Unlock Instant Price</button>';
+
+    shell.appendChild(overlay);
+
+    var btn = overlay.querySelector('.otp-unlock-instant-btn');
+    btn.addEventListener('click', function (ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      openOtpPopupFromRoot(wrap);
+    });
+  }
+
+  function injectPriceTeasersOnPage() {
+    injectStylesOnce();
+    var cards = document.querySelectorAll('.result-wrap');
+    var i;
+    if (cards.length) {
+      for (i = 0; i < cards.length; i++) applyPriceLockToCard(cards[i]);
+    } else {
+      var one = document.querySelector('[data-vehicle]');
+      if (one) applyPriceLockToCard(one);
+    }
+  }
+
+  if (!window.__otpPopupParentBound) {
+    window.__otpPopupParentBound = true;
+
+    document.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape') removePopupOverlay();
+    });
+
+    window.addEventListener('message', function (ev) {
+      if (ev.origin !== POPUP_ORIGIN) return;
+      var d = ev.data;
+      if (d === 'close-popup') {
+        removePopupOverlay();
+        return;
+      }
+      if (d && typeof d === 'object') {
+        if (d.type === 'OTP_SUCCESS') {
+          setPriceUnlocked();
+          revealAllLockedPrices();
+          injectPriceTeasersOnPage();
+          if (window.dataLayer && Array.isArray(window.dataLayer)) {
+            window.dataLayer.push({ event: 'otp_verification_success', otp_user: d.payload });
+          }
+          removePopupOverlay();
+          return;
+        }
+        if (d.type === 'OTP_CLOSE') {
+          removePopupOverlay();
+          return;
+        }
+        if (d.type === 'resize') {
+          var overlay = document.getElementById('custom-price-popup');
+          if (!overlay) return;
+          var iframe = overlay.querySelector('iframe');
+          if (iframe && typeof d.height === 'number') iframe.style.height = d.height + 'px';
+        }
+      }
+    });
+
+    window.addEventListener('storage', function (ev) {
+      if (ev.key !== STORAGE_KEY || !ev.newValue) return;
+      revealAllLockedPrices();
+      injectPriceTeasersOnPage();
+    });
+  }
+
+  function injectPopup() {
+    var elements = document.querySelectorAll('a, button, [class*="price"], [class*="cta"]');
+    for (var i = 0; i < elements.length; i++) {
+      var el = elements[i];
+      if (!el.textContent || !el.textContent.trim().match(/get today.?s price/i)) continue;
+      if (el.dataset.popupBound) continue;
+      el.dataset.popupBound = 'true';
+
+      var clone = el.cloneNode(true);
+      el.parentNode.replaceChild(clone, el);
+      clone.dataset.popupBound = 'true';
+
+      clone.addEventListener(
+        'click',
+        function (e) {
+          if (isPriceUnlocked()) return;
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          openOtpPopupFromRoot(findVehicleCardRoot(e.target));
+        },
+        true
+      );
+    }
+  }
+
+  function runAll() {
+    injectPriceTeasersOnPage();
+    injectPopup();
+  }
+
+  var observer = new MutationObserver(function () {
+    runAll();
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () {
+      setTimeout(runAll, 800);
+    });
+  } else {
+    setTimeout(runAll, 800);
+  }
+
+  /* First paint if already verified */
+  if (isPriceUnlocked()) {
+    revealAllLockedPrices();
+    setTimeout(runAll, 100);
+  }
+})();
+</script>
