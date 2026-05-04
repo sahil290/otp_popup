@@ -78,6 +78,7 @@ async function saveLeadToSupabase(userData: UserData, carData?: CarData) {
 }
 
 async function sendAdminEmail(userData: UserData, carData?: CarData) {
+  const leadRecipient = "leads@amfordsales.net";
   // Only try to send if configuration exists
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
     console.warn("Email configuration missing. Skipping email notification.");
@@ -95,7 +96,7 @@ async function sendAdminEmail(userData: UserData, carData?: CarData) {
   });
 
   console.log(
-    `[EMAIL] Attempting to send from ${process.env.EMAIL_USER} to ${process.env.EMAIL_TO} via ${process.env.EMAIL_HOST}:${process.env.EMAIL_PORT}`,
+    `[EMAIL] Attempting to send from ${process.env.EMAIL_USER} to ${leadRecipient} via ${process.env.EMAIL_HOST}:${process.env.EMAIL_PORT}`,
   );
 
   const adfDate = new Date().toISOString();
@@ -192,7 +193,7 @@ async function sendAdminEmail(userData: UserData, carData?: CarData) {
 
   const mailOptions = {
     from: `"Lead Generator" <${process.env.EMAIL_USER}>`,
-    to: process.env.EMAIL_TO,
+    to: leadRecipient,
     subject,
     text: `<?xml version="1.0"?>
 <?adf version="1.0"?>

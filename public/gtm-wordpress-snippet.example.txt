@@ -4,13 +4,16 @@ WordPress + Google Tag Manager — OTP iframe + hidden dealer price until verifi
 Behavior
 --------
 - Masks "AM Ford Price" / `.price-block.our-price.real-price` on each inventory card with a
-  teaser image + navy "Unlock Instant Price" button (image URL is configurable below).
+  “START HERE” teaser (image URL configurable) + navy **Unlock Instant Price** directly under it in the **same price-lock column** (not appended to `.hit-price`, which broke grid layout on some themes).
 - "Unlock Instant Price" and "Get Today's Price" open the OTP iframe (same flow).
 - While locked, Dealer Inspire green `.lightning-custom-cta.stat-button-link` ("Get Today's Price") buttons stay hidden — only the navy Unlock UI shows.
 - After **one successful OTP**, the shopper is treated as verified for this browser: other vehicles still show the Unlock UI until tapped, but tapping **Unlock Instant Price** only **reveals that card’s price** (no second OTP). The first OTP still unlocks the vehicle you verified on; each other vehicle unlocks on first click after that.
 - Legacy green buttons are **never** shown again (no restore after verify).
 - While locked, **dealer discount**, **doc/fee**, and similar adjustment rows in the price stack are hidden (along with the blurred dealer price); **the moment that vehicle’s discounted price is revealed**, those rows come back **except** the legacy green “Get Today’s Price” link, which stays removed for good.
+- While locked, **`.lightning-vrp-custom-html`** (VIN/stock + “Estimate payment”) is **hidden**.
+- While locked, the **price stack** uses a **fixed ~18px vertical gap** between rows; the blurred dealer row, **START HERE** teaser, and **Unlock** button share one **flex column** (`gap: 18px`) so the button cannot float over “Details” / title like a misplaced grid child.
 - When a card’s price is revealed (OTP success or one-tap unlock after verification), a short **confetti** burst plays on that card (skipped when the visitor prefers reduced motion).
+- **SRP image strip:** `.result-wrap .hit-image.thumbnail-carousel-container .swiper-wrapper` gets a **fixed responsive height** (`clamp(168px,30vw,220px)`); slide images use **`object-fit: cover`** so the photo band matches across cards and Compare / titles line up (edit that `clamp` in the injected CSS if you want a taller or shorter strip).
 
 Paste into GTM → Custom HTML. Set POPUP_ORIGIN (no trailing slash). Optional: change PRICE_TEASER_IMAGE_URL for the green banner graphic.
 
@@ -208,19 +211,45 @@ Paste into GTM → Custom HTML. Set POPUP_ORIGIN (no trailing slash). Optional: 
     var st = document.createElement('style');
     st.id = 'otp-price-lock-styles';
     st.textContent =
-      '.otp-dealer-price-shell{position:relative;margin:0;padding:0;}' +
-      '.otp-price-lock-overlay{' +
-      'position:absolute;' +
-      'inset:0;' +
+      '.otp-dealer-price-shell{' +
       'display:flex;' +
       'flex-direction:column;' +
-      'align-items:center;' +
-      'justify-content:center;' +
-      'z-index:4;' +
+      'gap:18px;' +
+      'position:relative;' +
+      'margin:0;' +
+      'padding:0;' +
+      'align-items:stretch;' +
+      'width:100%;' +
       'box-sizing:border-box;' +
       '}' +
-      '.otp-price-teaser-img-wrap{width:100%;max-width:340px;margin-top:20px;}' +
-      '.otp-price-teaser-img{display:block;width:75%;height:auto;margin:0 auto;}' +
+      '.otp-price-teaser-host{' +
+      'width:100%;' +
+      'flex-shrink:0;' +
+      'border-radius:16px;' +
+      'padding:10px 12px 12px;' +
+      'background:rgba(255,255,255,0.58);' +
+      'backdrop-filter:blur(14px);' +
+      '-webkit-backdrop-filter:blur(14px);' +
+      'border:1px solid rgba(255,255,255,0.72);' +
+      'box-shadow:0 8px 28px rgba(15,23,42,0.1),inset 0 1px 0 rgba(255,255,255,0.75);' +
+      'box-sizing:border-box;' +
+      'cursor:pointer;' +
+      '}' +
+      '.otp-price-teaser-img-wrap{width:100%;max-width:340px;margin:0 auto;}' +
+      '.otp-price-teaser-img{display:block;width:100%;max-width:100%;max-height:150px;height:auto;margin:0 auto;object-fit:contain;}' +
+      '.result-wrap.otp-price-awaiting .price-stack,' +
+      '.result-wrap.otp-price-awaiting .advanced-pricing-vrp-card .price-stack,' +
+      '.result-wrap.otp-price-awaiting .advanced-pricing-stack{' +
+      'display:flex!important;' +
+      'flex-direction:column!important;' +
+      'gap:18px!important;' +
+      'align-items:stretch!important;' +
+      '}' +
+      '.result-wrap.otp-price-awaiting .price-stack > .price-block,' +
+      '.result-wrap.otp-price-awaiting .price-stack > .otp-dealer-price-shell,' +
+      '.result-wrap.otp-price-awaiting .advanced-pricing-stack > .price-block{' +
+      'margin-top:0!important;margin-bottom:0!important;' +
+      '}' +
       '.otp-unlock-instant-btn{' +
       'margin-bottom:14px;' +
       'background:#05214F;' +
@@ -243,6 +272,21 @@ Paste into GTM → Custom HTML. Set POPUP_ORIGIN (no trailing slash). Optional: 
       '}' +
       '.otp-unlock-instant-btn:hover{filter:brightness(1.08);}' +
       '.otp-unlock-instant-btn:active{transform:scale(0.98);}' +
+      '.otp-price-awaiting .lightning-vrp-custom-html{display:none!important;visibility:hidden!important;pointer-events:none!important;}' +
+      '.otp-price-shell-unlock{' +
+      'flex-shrink:0;' +
+      'width:100%;' +
+      'max-width:100%;' +
+      'min-width:0;' +
+      'box-sizing:border-box;' +
+      'padding:0 2px 4px;' +
+      '}' +
+      '.otp-price-shell-unlock .otp-unlock-instant-btn{' +
+      'width:100%;' +
+      'max-width:100%;' +
+      'margin:0;' +
+      'align-self:stretch;' +
+      '}' +
       '.lightning-custom-cta.stat-button-link[data-otp-legacy-cta-hidden="1"]{display:none!important;visibility:hidden!important;pointer-events:none!important;}' +
       '.result-wrap.otp-price-awaiting .advanced-pricing-vrp-card .price-stack .price-block.subtract,' +
       '.result-wrap.otp-price-awaiting .advanced-pricing-vrp-card .price-stack .price-block.add,' +
@@ -252,6 +296,39 @@ Paste into GTM → Custom HTML. Set POPUP_ORIGIN (no trailing slash). Optional: 
       '.result-wrap.otp-price-awaiting .advanced-pricing-stack .price-block.add,' +
       '.result-wrap.otp-price-awaiting .advanced-pricing-vrp-card .advanced-pricing-stack .price-block.subtract,' +
       '.result-wrap.otp-price-awaiting .advanced-pricing-vrp-card .advanced-pricing-stack .price-block.add{display:none!important;}' +
+      '.result-wrap .hit-image.thumbnail-carousel-container{position:relative;width:100%;box-sizing:border-box;}' +
+      '.result-wrap .hit-image.thumbnail-carousel-container > .swiper{' +
+      'width:100%!important;' +
+      'margin:0!important;' +
+      'box-sizing:border-box!important;' +
+      '}' +
+      '.result-wrap .hit-image.thumbnail-carousel-container .swiper-wrapper{' +
+      'height:clamp(168px,30vw,220px)!important;' +
+      'min-height:clamp(168px,30vw,220px)!important;' +
+      'max-height:clamp(168px,30vw,220px)!important;' +
+      'box-sizing:border-box!important;' +
+      'overflow:hidden!important;' +
+      '}' +
+      '.result-wrap .hit-image.thumbnail-carousel-container .swiper-slide{' +
+      'height:100%!important;' +
+      'box-sizing:border-box!important;' +
+      '}' +
+      '.result-wrap .hit-image.thumbnail-carousel-container .swiper-slide .hit-link{' +
+      'display:flex!important;' +
+      'align-items:center!important;' +
+      'justify-content:center!important;' +
+      'width:100%!important;' +
+      'height:100%!important;' +
+      'box-sizing:border-box;' +
+      '}' +
+      '.result-wrap .hit-image.thumbnail-carousel-container .swiper-slide img,' +
+      '.result-wrap .hit-image.thumbnail-carousel-container .swiper-slide img[data-testid^="vehicle-image"]{' +
+      'width:100%!important;' +
+      'height:100%!important;' +
+      'object-fit:cover!important;' +
+      'object-position:center!important;' +
+      'display:block;' +
+      '}' +
       '.otp-celebration-layer{pointer-events:none;position:absolute;inset:0;z-index:60;overflow:visible;}' +
       '.otp-celeb-confetti{' +
       'position:absolute;width:9px;height:9px;border-radius:2px;opacity:1;' +
@@ -536,6 +613,32 @@ Paste into GTM → Custom HTML. Set POPUP_ORIGIN (no trailing slash). Optional: 
     );
   }
 
+  function bindUnlockButton(btn, wrap) {
+    if (!btn || !wrap) return;
+    btn.addEventListener('click', function (ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (isGloballyVerified()) {
+        if (revealCardPriceWithoutPopup(wrap)) return;
+      }
+      openOtpPopupFromRoot(wrap);
+    });
+  }
+
+  /** Unlock CTA lives inside `.otp-dealer-price-shell` so theme grid on `.hit-price` / `.result-wrap` cannot pull it over Details/title. */
+  function appendUnlockInsidePriceShell(shell, wrap) {
+    if (!shell || !wrap || shell.querySelector('.otp-price-shell-unlock')) return;
+    var unlockWrap = document.createElement('div');
+    unlockWrap.className = 'otp-price-shell-unlock';
+    unlockWrap.setAttribute('data-otp-shell-unlock', '1');
+    unlockWrap.innerHTML =
+      '<button type="button" class="otp-unlock-instant-btn">' +
+      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M7 11V8a5 5 0 0 1 10 0v3"/></svg>' +
+      'Unlock Instant Price</button>';
+    shell.appendChild(unlockWrap);
+    bindUnlockButton(unlockWrap.querySelector('.otp-unlock-instant-btn'), wrap);
+  }
+
   /**
    * After the real dealer price is shown: restore everything we hid for suspense (stack rows, overlays)
    * but keep the legacy “Get Today’s Price” link suppressed via hideLegacyGetPriceCtasInCard.
@@ -550,16 +653,25 @@ Paste into GTM → Custom HTML. Set POPUP_ORIGIN (no trailing slash). Optional: 
     var shells = wrap.querySelectorAll('.otp-dealer-price-shell');
     for (var j = shells.length - 1; j >= 0; j--) {
       var sh = shells[j];
-      var pr =
-        sh.querySelector('.price-block.our-price.real-price') ||
-        sh.querySelector('.price-block.our-price');
-      if (pr && sh.parentNode) {
-        pr.style.filter = '';
-        pr.style.pointerEvents = '';
-        sh.parentNode.insertBefore(pr, sh);
-        sh.parentNode.removeChild(sh);
+      var teasersIn = sh.querySelectorAll('.otp-price-teaser-host');
+      var ti;
+      for (ti = 0; ti < teasersIn.length; ti++) teasersIn[ti].remove();
+      var unlocksIn = sh.querySelectorAll('.otp-price-shell-unlock');
+      var ui;
+      for (ui = 0; ui < unlocksIn.length; ui++) unlocksIn[ui].remove();
+      var par = sh.parentNode;
+      if (!par) continue;
+      while (sh.firstChild) {
+        par.insertBefore(sh.firstChild, sh);
       }
+      par.removeChild(sh);
     }
+    var hosts = wrap.querySelectorAll('.otp-price-teaser-host');
+    for (var h = 0; h < hosts.length; h++) hosts[h].remove();
+    var legacyBars = wrap.querySelectorAll('.otp-card-bottom-unlock');
+    for (var b = 0; b < legacyBars.length; b++) legacyBars[b].remove();
+    var orphanUnlocks = wrap.querySelectorAll('.otp-price-shell-unlock');
+    for (var ou = 0; ou < orphanUnlocks.length; ou++) orphanUnlocks[ou].remove();
     var dealerRow = findDealerPriceRow(wrap);
     if (dealerRow) {
       dealerRow.style.filter = '';
@@ -590,7 +702,11 @@ Paste into GTM → Custom HTML. Set POPUP_ORIGIN (no trailing slash). Optional: 
 
     wrap.classList.add('otp-price-awaiting');
 
-    if (row.closest('.otp-dealer-price-shell')) return;
+    var existingShell = row.closest('.otp-dealer-price-shell');
+    if (existingShell) {
+      appendUnlockInsidePriceShell(existingShell, wrap);
+      return;
+    }
 
     var shell = document.createElement('div');
     shell.className = 'otp-dealer-price-shell';
@@ -600,30 +716,34 @@ Paste into GTM → Custom HTML. Set POPUP_ORIGIN (no trailing slash). Optional: 
     row.style.filter = 'blur(11px)';
     row.style.pointerEvents = 'none';
 
-    var overlay = document.createElement('div');
-    overlay.className = 'otp-price-lock-overlay';
-
-    overlay.innerHTML =
+    var teaserHost = document.createElement('div');
+    teaserHost.className = 'otp-price-teaser-host';
+    teaserHost.setAttribute('role', 'button');
+    teaserHost.setAttribute('tabindex', '0');
+    teaserHost.innerHTML =
       '<div class="otp-price-teaser-img-wrap">' +
         '<img class="otp-price-teaser-img" src="' +
         PRICE_TEASER_IMAGE_URL +
         '" alt="Want a Lower Price? Start here." width="640" height="200" loading="lazy" decoding="async"/>' +
-      '</div>' +
-      '<button type="button" class="otp-unlock-instant-btn">' +
-      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M7 11V8a5 5 0 0 1 10 0v3"/></svg>' +
-      'Unlock Instant Price</button>';
+      '</div>';
 
-    shell.appendChild(overlay);
-
-    var btn = overlay.querySelector('.otp-unlock-instant-btn');
-    btn.addEventListener('click', function (ev) {
-      ev.preventDefault();
-      ev.stopPropagation();
+    function teaserUnlock(ev) {
+      if (ev && ev.type === 'keydown' && ev.key !== 'Enter' && ev.key !== ' ') return;
+      if (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+      }
       if (isGloballyVerified()) {
         if (revealCardPriceWithoutPopup(wrap)) return;
       }
       openOtpPopupFromRoot(wrap);
-    });
+    }
+    teaserHost.addEventListener('click', teaserUnlock);
+    teaserHost.addEventListener('keydown', teaserUnlock);
+
+    shell.appendChild(teaserHost);
+
+    appendUnlockInsidePriceShell(shell, wrap);
   }
 
   function injectPriceTeasersOnPage() {
