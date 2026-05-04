@@ -12,6 +12,7 @@
 body {
   scrollbar-width: none;
   -ms-overflow-style: none;
+  background: transparent !important;
 }
 
 body::-webkit-scrollbar {
