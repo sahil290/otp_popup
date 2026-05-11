@@ -254,11 +254,12 @@ Paste into GTM → Custom HTML. Set POPUP_ORIGIN (no trailing slash). Optional: 
       '}' +
       '.otp-unlock-instant-btn{' +
       'margin-bottom:14px;' +
+      'position:relative;' +
+      'overflow:hidden;' +
       'background:#05214F;' +
       'color:#fff;' +
       'border:none;' +
-      'padding:8px 16px;' +
-      'border-radius:999px;' +
+      'padding:16px 16px;' +
       'font-weight:600;' +
       'font-size:15px;' +
       'cursor:pointer;' +
@@ -266,14 +267,36 @@ Paste into GTM → Custom HTML. Set POPUP_ORIGIN (no trailing slash). Optional: 
       'align-items:center;' +
       'gap:10px;' +
       'font-family:system-ui,-apple-system,sans-serif;' +
-      'box-shadow:0 4px 14px rgba(5,33,79,0.32);' +
       'width:100%;' +
       'max-width:340px;' +
       'align-self:center;' +
       'box-sizing:border-box;' +
+      'animation:otpGlowPulse 2.8s ease-in-out infinite;' +
       '}' +
-      '.otp-unlock-instant-btn:hover{filter:brightness(1.08);}' +
-      '.otp-unlock-instant-btn:active{transform:scale(0.98);}' +
+      '.otp-unlock-instant-btn::before{' +
+      'content:"";' +
+      'position:absolute;' +
+      'top:0;' +
+      'left:-100%;' +
+      'width:60%;' +
+      'height:100%;' +
+      'background:linear-gradient(120deg,transparent,rgba(255,255,255,0.35),transparent);' +
+      'filter:blur(10px);' +
+      'opacity:0.6;' +
+      'animation:otpFogSweep 3.5s ease-in-out infinite;' +
+      '}' +
+      '@keyframes otpGlowPulse{' +
+      '0%{box-shadow:0 4px 14px rgba(5,33,79,0.32);transform:scale(1);}' +
+      '50%{box-shadow:0 6px 22px rgba(5,33,79,0.55);transform:scale(1.02);}' +
+      '100%{box-shadow:0 4px 14px rgba(5,33,79,0.32);transform:scale(1);}' +
+      '}' +
+      '@keyframes otpFogSweep{' +
+      '0%{left:-100%;}' +
+      '50%{left:120%;}' +
+      '100%{left:120%;}' +
+      '}' +
+      '.otp-unlock-instant-btn:hover{filter:brightness(1.08);animation-duration:1.8s;}' +
+      '.otp-unlock-instant-btn:active{transform:scale(0.97);}' +
       '.otp-price-awaiting .lightning-vrp-custom-html{display:none!important;visibility:hidden!important;pointer-events:none!important;}' +
       '.otp-price-shell-unlock{' +
       'flex-shrink:0;' +
