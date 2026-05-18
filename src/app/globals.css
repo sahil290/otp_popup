@@ -172,6 +172,9 @@ body::-webkit-scrollbar {
 .mobile-only { display: none; }
 
 @media (max-width: 768px) {
+  .otp-vehicle-card{
+    display : none;
+  }
   .otp-flex-container {
     flex-direction: column;
     min-height: auto;
