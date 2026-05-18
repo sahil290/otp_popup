@@ -684,7 +684,7 @@ export default function OTPPopup({ onSuccess, onClose, apiBase = "" }: OTPPopupP
 
               <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 12, textAlign: "center", lineHeight: 1.5 }}>
                 By requesting Instant Price, you agree that AM FORD Ashtabula and its affiliates, and sales professionals may call/text you about your inquiry, which may involve use of automated means and prerecorded/artificial voices. Message/data rates may apply. You also agree to our
-                <a href="https://www.amfordashtabula.com/terms-of-use/" target="_blank" rel="noopener noreferrer" style={{ color: BRAND, fontWeight: 600, textDecoration: "underline" }}>
+                <a href="https://www.amfordashtabula.com/terms-of-use/" target="_blank" rel="noopener noreferrer" style={{ color: BRAND, fontWeight: 600, textDecoration: "underline", marginLeft : "10px" }}>
                   terms of use.
                 </a>
               </p>
