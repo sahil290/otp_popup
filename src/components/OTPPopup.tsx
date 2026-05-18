@@ -592,7 +592,6 @@ export default function OTPPopup({ onSuccess, onClose, apiBase = "" }: OTPPopupP
                     <option>Text</option>
                     <option>Call</option>
                     <option>Email</option>
-                    <option>WhatsApp</option>
                   </select>
                 </div>
 
